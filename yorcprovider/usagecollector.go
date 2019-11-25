@@ -18,7 +18,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -98,10 +100,64 @@ func (u *usageCollectorService) DeleteQuery(collectorID string, location string,
 	return err
 }
 
-// GetQueries gets queries of resources usahe performed on a given collector
-func (u *usageCollectorService) GetQueries(collectorID string) (map[string][]string, error) {
-	var err error
-	return nil, err
+// GetQueryIDs returns for each collector, IDs of resources usage queries performed
+// on a given orchestrator
+func (u *usageCollectorService) GetQueryIDs(orchestratorName string) (map[string][]string, error) {
+
+	infraUsageURL := fmt.Sprintf("%s/orchestrators/%s/infra_usage", yorcProviderRESTPrefix, orchestratorName)
+	response, err := u.client.do(
+		"GET",
+		infraUsageURL,
+		nil,
+		[]Header{
+			{
+				"Content-Type",
+				"application/json",
+			},
+		},
+	)
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "Unable to send request to get query IDs on %s", orchestratorName)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, getError(response.Body)
+	}
+
+	responseBody, err := ioutil.ReadAll(response.Body)
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "Unable to read response to get query IDs on %s", orchestratorName)
+	}
+
+	var res struct {
+		Data struct {
+			Tasks []struct {
+				Rel  string `json:"rel,omitempty"`
+				HRef string `json:"href,omitempty"`
+				Type string `json:"type,omitempty"`
+			} `json:"tasks,omitempty"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal([]byte(responseBody), &res); err != nil {
+		return nil, errors.Wrapf(err, "Cannot convert the body of response to get query IDs on %s", orchestratorName)
+	}
+
+	// Getting query IDs from href
+	result := make(map[string][]string)
+	taskPrefix := infraUsageURL + "/"
+	for _, t := range res.Data.Tasks {
+		s := strings.TrimPrefix(t.HRef, taskPrefix)
+		values := strings.Split(s, "/")
+		if len(values) == 3 {
+			result[values[0]] = append(result[values[0]], values[2])
+		} else {
+			log.Printf("ERROR: expected response <collector ID>/tasks/<query ID>, go %s", s)
+		}
+	}
+	return result, err
 }
 
 // GetQueryCollectedUsage gets results of a resources usage collection query
