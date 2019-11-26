@@ -37,7 +37,7 @@ type UsageCollectorService interface {
 	// Gets queries of resources usage performed on a given orchestrator, for a given collector
 	GetQueryIDs(orchestratorName, collectorID string) ([]string, error)
 	// Gets results of a resources usage collection query
-	GetQueryCollectedUsage(queryID string) (map[string]interface{}, error)
+	GetCollectedUsage(queryID string) (*UsageCollection, error)
 }
 
 type usageCollectorService struct {
@@ -227,8 +227,8 @@ func (u *usageCollectorService) GetQueryIDs(orchestratorName, collectorID string
 	return result, err
 }
 
-// GetQueryCollectedUsage gets results of a resources usage collection query
-func (u *usageCollectorService) GetQueryCollectedUsage(queryID string) (map[string]interface{}, error) {
+// GetCollectedUsage gets results of a resources usage collection query
+func (u *usageCollectorService) GetCollectedUsage(queryID string) (*UsageCollection, error) {
 	response, err := u.client.do(
 		"GET",
 		fmt.Sprintf("%s/orchestrators/%s", yorcProviderRESTPrefix, queryID),
@@ -258,12 +258,20 @@ func (u *usageCollectorService) GetQueryCollectedUsage(queryID string) (map[stri
 
 	var res struct {
 		Data struct {
-			Infrastructures []UsageCollector `json:"infrastructures,omitempty"`
+			ID       string                 `json:"id,omitempty"`
+			TargetID string                 `json:"target_id,omitempty"`
+			Type     string                 `json:"type,omitempty"`
+			Status   string                 `json:"status,omitempty"`
+			Results  map[string]interface{} `json:"result_set,omitempty"`
 		} `json:"data"`
 	}
-	if err = json.Unmarshal([]byte(responseBody), &res); err != nil {
-		return nil, errors.Wrapf(err, "Cannot convert the body of response to get collectors on %s", orchestratorName)
+	if err = json.Unmarshal(responseBody, &res); err != nil {
+		return nil, errors.Wrapf(err, "Cannot convert the body of response to get collectors on %s: %s", queryID, string(responseBody))
 	}
 
-	return res.Data.Infrastructures, err
+	result := UsageCollection{
+		Status:  res.Data.Status,
+		Results: res.Data.Results,
+	}
+	return &result, err
 }
