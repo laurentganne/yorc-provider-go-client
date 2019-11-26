@@ -27,6 +27,13 @@ type UsageCollector struct {
 	Origin string `json:"origin,omitempty"`
 }
 
+// DataCollection holds the status of a Resources usage query, and results when the
+// collection is done
+type DataCollection struct {
+	Status  string                 `json:"status,omitempty"`
+	Results map[string]interface{} `json:"results,omitempty"`
+}
+
 // Header is the representation of an http header
 type Header struct {
 	Key   string

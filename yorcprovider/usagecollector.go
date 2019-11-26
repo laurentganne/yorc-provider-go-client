@@ -18,8 +18,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -31,13 +31,13 @@ type UsageCollectorService interface {
 	GetUsageCollectors(orchestratorName string) ([]UsageCollector, error)
 	// Queries the collection of resources usage on a given location
 	// The ID of a query that will perform the collection is returned
-	Query(collectorID string, location string, queryParameters map[string]string) (string, error)
+	Query(orchestratorName, collectorID, location string, queryParameters map[string]string) (string, error)
 	// Deletes a query of resources usage collection
-	DeleteQuery(collectorID string, location string, queryID string) error
-	// Gets queries of resources usahe performed on a given collector
-	GetQueries(collectorID string) (map[string][]string, error)
+	DeleteQuery(queryID string) error
+	// Gets queries of resources usage performed on a given orchestrator, for a given collector
+	GetQueryIDs(orchestratorName, collectorID string) ([]string, error)
 	// Gets results of a resources usage collection query
-	GetQueryCollectedUsage(collectorID string, location string, queryID string) (map[string]interface{}, error)
+	GetQueryCollectedUsage(queryID string) (map[string]interface{}, error)
 }
 
 type usageCollectorService struct {
@@ -89,25 +89,89 @@ func (u *usageCollectorService) GetUsageCollectors(orchestratorName string) ([]U
 
 // Queries the collection of resources usage on a given location
 // The ID of a query that will perform the collection is returned
-func (u *usageCollectorService) Query(collectorID string, location string, queryParameters map[string]string) (string, error) {
-	var err error
-	return "", err
+func (u *usageCollectorService) Query(orchestratorName, collectorID, location string, queryParameters map[string]string) (string, error) {
+
+	var queryID string
+	usageURL, err := url.Parse(fmt.Sprintf("%s/orchestrators/%s/infra_usage/%s/%s",
+		yorcProviderRESTPrefix, orchestratorName, collectorID, location))
+	if err != nil {
+		return queryID, err
+	}
+
+	query := usageURL.Query()
+	for k, v := range queryParameters {
+		query.Set(k, v)
+	}
+
+	usageURL.RawQuery = query.Encode()
+
+	response, err := u.client.do(
+		"POST",
+		usageURL.String(),
+		nil,
+		[]Header{
+			{
+				"Content-Type",
+				"application/json",
+			},
+		},
+	)
+
+	if err != nil {
+		return queryID, errors.Wrapf(err, "Cannot send a request to submit a query on resources usage for %s %s %s",
+			orchestratorName, collectorID, location)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusCreated {
+		return queryID, getError(response.Body)
+	}
+
+	locationHeader := response.Header["Location"]
+	if len(locationHeader) == 0 || locationHeader[0] == "" {
+		return queryID, errors.Wrapf(err, "No resources usage query could be created for %s %s %s",
+			orchestratorName, collectorID, location)
+	}
+
+	queryIDPrefix := fmt.Sprintf("%s/orchestrators/", yorcProviderRESTPrefix)
+	queryID = strings.TrimPrefix(locationHeader[0], queryIDPrefix)
+
+	return queryID, err
 }
 
 // DeleteQuery deletes a query of resources usage collection
-func (u *usageCollectorService) DeleteQuery(collectorID string, location string, queryID string) error {
-	var err error
-	return err
+func (u *usageCollectorService) DeleteQuery(queryID string) error {
+	response, err := u.client.do(
+		"DELETE",
+		fmt.Sprintf("%s/orchestrators/%s", yorcProviderRESTPrefix, queryID),
+		nil,
+		[]Header{
+			{
+				"Content-Type",
+				"application/json",
+			},
+		},
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "Unable to send request to undeploy A4C application")
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return getError(response.Body)
+	}
+
+	return nil
 }
 
-// GetQueryIDs returns for each collector, IDs of resources usage queries performed
-// on a given orchestrator
-func (u *usageCollectorService) GetQueryIDs(orchestratorName string) (map[string][]string, error) {
+// GetQueryIDs returns IDs of resources usage queries performed
+// on a given orchestrator for a given collector
+func (u *usageCollectorService) GetQueryIDs(orchestratorName, collectorID string) ([]string, error) {
 
-	infraUsageURL := fmt.Sprintf("%s/orchestrators/%s/infra_usage", yorcProviderRESTPrefix, orchestratorName)
 	response, err := u.client.do(
 		"GET",
-		infraUsageURL,
+		fmt.Sprintf("%s/orchestrators/%s/infra_usage", yorcProviderRESTPrefix, orchestratorName),
 		nil,
 		[]Header{
 			{
@@ -146,22 +210,60 @@ func (u *usageCollectorService) GetQueryIDs(orchestratorName string) (map[string
 	}
 
 	// Getting query IDs from href
-	result := make(map[string][]string)
-	taskPrefix := infraUsageURL + "/"
+	var result []string
+	queryIDPrefix := fmt.Sprintf("%s/orchestrators/", yorcProviderRESTPrefix)
 	for _, t := range res.Data.Tasks {
-		s := strings.TrimPrefix(t.HRef, taskPrefix)
-		values := strings.Split(s, "/")
-		if len(values) == 3 {
-			result[values[0]] = append(result[values[0]], values[2])
-		} else {
-			log.Printf("ERROR: expected response <collector ID>/tasks/<query ID>, go %s", s)
+		s := strings.TrimPrefix(t.HRef, queryIDPrefix)
+		if collectorID != "" {
+			// String format <orchestrator>/infra_usage/<collector>/tasks/<id>
+			values := strings.Split(s, "/")
+			if len(values) > 3 || values[2] != collectorID {
+				// This query is for another collector
+				break
+			}
 		}
+		result = append(result, s)
 	}
 	return result, err
 }
 
 // GetQueryCollectedUsage gets results of a resources usage collection query
-func (u *usageCollectorService) GetQueryCollectedUsage(collectorID string, location string, queryID string) (map[string]interface{}, error) {
-	var err error
-	return nil, err
+func (u *usageCollectorService) GetQueryCollectedUsage(queryID string) (map[string]interface{}, error) {
+	response, err := u.client.do(
+		"GET",
+		fmt.Sprintf("%s/orchestrators/%s", yorcProviderRESTPrefix, queryID),
+		nil,
+		[]Header{
+			{
+				"Content-Type",
+				"application/json",
+			},
+		},
+	)
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "Unable to send request to get usage collected by query %s", queryID)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, getError(response.Body)
+	}
+
+	responseBody, err := ioutil.ReadAll(response.Body)
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "Unable to read response to get usage collected by query %s", queryID)
+	}
+
+	var res struct {
+		Data struct {
+			Infrastructures []UsageCollector `json:"infrastructures,omitempty"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal([]byte(responseBody), &res); err != nil {
+		return nil, errors.Wrapf(err, "Cannot convert the body of response to get collectors on %s", orchestratorName)
+	}
+
+	return res.Data.Infrastructures, err
 }

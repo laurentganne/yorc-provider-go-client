@@ -42,6 +42,19 @@ type Client interface {
 }
 
 const (
+	// QueryStatusInitial is the initial status of a qurery
+	QueryStatusInitial = "INITIAL"
+	// QueryStatusRunning is the status of query running (in the process of collecting usage)
+	QueryStatusRunning = "RUNNING"
+	// QueryStatusDone is the status of a query for which the work of data collection is done
+	QueryStatusDone = "DONE"
+	// QueryStatusFailed is the status of a query for which the work of data collection failed
+	QueryStatusFailed = "FAILED"
+	// QueryStatusCanceled is the status of a query for which the work of data collection was canceled
+	QueryStatusCanceled = "CANCELED"
+)
+
+const (
 	yorcProviderRESTPrefix = "/rest/yorc-collector-plugin/latest"
 )
 
