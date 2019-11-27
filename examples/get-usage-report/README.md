@@ -23,7 +23,7 @@ go build -o collect.test
 
 Now, run this example providing in arguments:
 * the Alien4Cloud URL
-* credentials of a user who needs to have the administrator role
+* credentials of a user who needs to have the **administrator** role
 * the name of the orchestrator managing the location for which we will get a report
 * the type of infrastructure of the location for which we will get a report
 * the name of the location for which we will get a report
