@@ -1,4 +1,4 @@
-# Run a workflow
+# Getting infrastructure usage reports
 
 This example shows how the yorcprovider go client can be used to query and display
 usages reports on a given location.
