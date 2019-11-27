@@ -1,4 +1,4 @@
-module github.com/alien4cloud/alien4cloud-go-client/v1
+module github.com/laurentganne/yorc-provider-go-client/v1
 
 go 1.13
 

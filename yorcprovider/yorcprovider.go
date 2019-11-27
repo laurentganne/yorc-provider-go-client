@@ -126,8 +126,9 @@ func NewClient(a4cURL string, user string, password string, caFile string, skipS
 		password: password,
 	}
 	return &yorcProviderClient{
-		client:              restClient,
-		orchestratorService: &orchestratorService{restClient},
+		client:                restClient,
+		orchestratorService:   &orchestratorService{restClient},
+		usageCollectorService: &usageCollectorService{restClient},
 	}, nil
 }
 

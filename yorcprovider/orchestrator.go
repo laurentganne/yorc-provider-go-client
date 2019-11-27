@@ -25,16 +25,16 @@ import (
 
 // OrchestratorService is the interface to the service mamaging orchestrators
 type OrchestratorService interface {
-	// Returns the list of Alien4Cloud orchestrators configured
-	GetOrchestrators(orchestratorID string) ([]Orchestrator, error)
+	// Returns the list of Yorc orchestrators configured
+	GetOrchestrators() ([]Orchestrator, error)
 }
 
 type orchestratorService struct {
 	client restClient
 }
 
-// GetOrchestrators returns the list of Alien4Cloud orchestrators configured
-func (o *orchestratorService) GetOrchestrators(orchestratorID string) ([]Orchestrator, error) {
+// GetOrchestrators returns the list of Yorc orchestrators configured
+func (o *orchestratorService) GetOrchestrators() ([]Orchestrator, error) {
 
 	// Get orchestrator location
 	response, err := o.client.do(

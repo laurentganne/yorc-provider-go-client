@@ -77,7 +77,7 @@ func (u *usageCollectorService) GetUsageCollectors(orchestratorName string) ([]U
 
 	var res struct {
 		Data struct {
-			Infrastructures []UsageCollector `json:"infrastructures,omitempty"`
+			Infrastructures []UsageCollector `json:"infrastructure_usage_collectors,omitempty"`
 		} `json:"data"`
 	}
 	if err = json.Unmarshal([]byte(responseBody), &res); err != nil {
